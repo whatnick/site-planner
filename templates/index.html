@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SA Site Plan Generator</title>
+    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        header {
+            width: 100%;
+            background: #1e293b;
+            border-bottom: 1px solid #334155;
+            padding: 1rem 2rem;
+            text-align: center;
+        }
+
+        header h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #f8fafc;
+        }
+
+        header p {
+            font-size: 0.875rem;
+            color: #94a3b8;
+            margin-top: 0.25rem;
+        }
+
+        main {
+            width: 100%;
+            max-width: 640px;
+            padding: 2rem 1rem;
+        }
+
+        .card {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 12px;
+            padding: 2rem;
+        }
+
+        .card h2 {
+            font-size: 1.125rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .card p.hint {
+            font-size: 0.8rem;
+            color: #94a3b8;
+            margin-bottom: 1.5rem;
+        }
+
+        .form-group {
+            display: flex;
+            gap: 0.75rem;
+        }
+
+        input[type="text"] {
+            flex: 1;
+            padding: 0.75rem 1rem;
+            font-size: 1rem;
+            background: #0f172a;
+            border: 1px solid #475569;
+            border-radius: 8px;
+            color: #f8fafc;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        input[type="text"]:focus {
+            border-color: #3b82f6;
+        }
+
+        input[type="text"]::placeholder {
+            color: #64748b;
+        }
+
+        button {
+            padding: 0.75rem 1.5rem;
+            font-size: 1rem;
+            font-weight: 600;
+            background: #3b82f6;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background 0.2s;
+            white-space: nowrap;
+        }
+
+        button:hover { background: #2563eb; }
+        button:disabled { background: #475569; cursor: not-allowed; }
+
+        #result {
+            margin-top: 1.5rem;
+        }
+
+        .spinner {
+            display: none;
+            text-align: center;
+            padding: 2rem;
+            color: #94a3b8;
+        }
+
+        .htmx-request .spinner { display: block; }
+        .htmx-request .form-group { opacity: 0.5; pointer-events: none; }
+
+        .spinner svg {
+            animation: spin 1s linear infinite;
+            width: 32px;
+            height: 32px;
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        footer {
+            margin-top: auto;
+            padding: 1.5rem;
+            text-align: center;
+            font-size: 0.75rem;
+            color: #64748b;
+        }
+
+        footer a { color: #3b82f6; text-decoration: none; }
+        footer a:hover { text-decoration: underline; }
+
+        /* Result styles (rendered in result.html partial) */
+        .result-card {
+            background: #162234;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            padding: 1.5rem;
+        }
+
+        .result-card.error {
+            border-color: #ef4444;
+        }
+
+        .result-card .error-msg {
+            color: #fca5a5;
+            font-size: 0.9rem;
+        }
+
+        .result-card h3 {
+            color: #22c55e;
+            margin-bottom: 0.75rem;
+            font-size: 1rem;
+        }
+
+        .result-card dl {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 0.25rem 1rem;
+            font-size: 0.875rem;
+            margin-bottom: 1rem;
+        }
+
+        .result-card dt { color: #94a3b8; }
+        .result-card dd { color: #f8fafc; }
+
+        .download-btn {
+            display: inline-block;
+            padding: 0.625rem 1.25rem;
+            background: #22c55e;
+            color: #0f172a;
+            font-weight: 600;
+            border-radius: 6px;
+            text-decoration: none;
+            font-size: 0.9rem;
+            transition: background 0.2s;
+        }
+
+        .download-btn:hover { background: #16a34a; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>&#x1F4CD; SA Site Plan Generator</h1>
+        <p>Generate development application site plans from aerial imagery &mdash; South Australia</p>
+    </header>
+
+    <main>
+        <div class="card">
+            <h2>Enter Property Address</h2>
+            <p class="hint">
+                Enter a South Australian street address. The system will locate the property,
+                fetch cadastral boundaries, and generate an A3 site plan PDF.
+            </p>
+
+            <form hx-post="/generate" hx-target="#result" hx-indicator="#form-wrapper">
+                <div id="form-wrapper">
+                    <div class="form-group">
+                        <input type="text" name="address" placeholder="e.g. 1 King William St, Adelaide SA 5000"
+                               required autocomplete="street-address" autofocus>
+                        <button type="submit">Generate</button>
+                    </div>
+                    <div class="spinner">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 2v4m0 12v4m-7.07-3.93l2.83-2.83m8.48-8.48l2.83-2.83M2 12h4m12 0h4m-3.93 7.07l-2.83-2.83M7.76 7.76L4.93 4.93"/>
+                        </svg>
+                        <p>Generating site plan&hellip; This may take a few seconds.</p>
+                    </div>
+                </div>
+            </form>
+
+            <div id="result"></div>
+        </div>
+    </main>
+
+    <footer>
+        <p>
+            Cadastral data &copy; Government of South Australia (Location SA) &bull;
+            Imagery &copy; Google Maps &bull;
+            Built with <a href="https://htmx.org">HTMX</a> + Go
+        </p>
+        <p style="margin-top: 0.25rem;">
+            Site plans are indicative only and not a substitute for a licensed survey.
+        </p>
+    </footer>
+</body>
+</html>

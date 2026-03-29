@@ -1,0 +1,22 @@
+{{if .Error}}
+<div class="result-card error">
+    <p class="error-msg">&#x26A0;&#xFE0F; {{.Error}}</p>
+</div>
+{{else}}
+<div class="result-card">
+    <h3>&#x2705; Site Plan Generated</h3>
+    <dl>
+        <dt>Address</dt>
+        <dd>{{.Address}}</dd>
+        <dt>Parcel</dt>
+        <dd>{{.ParcelID}}</dd>
+        <dt>Area</dt>
+        <dd>{{.Area}} m&sup2;</dd>
+        <dt>Boundary Edges</dt>
+        <dd>{{.EdgeCount}}</dd>
+    </dl>
+    <a class="download-btn" href="/download/{{.DownloadID}}">
+        &#x1F4E5; Download Site Plan (PDF)
+    </a>
+</div>
+{{end}}
