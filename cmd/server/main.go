@@ -13,6 +13,7 @@ import (
 
 	"github.com/whatnick/site-planner/internal/cadastre"
 	"github.com/whatnick/site-planner/internal/config"
+	"github.com/whatnick/site-planner/internal/demo"
 	"github.com/whatnick/site-planner/internal/detect"
 	"github.com/whatnick/site-planner/internal/geocode"
 	"github.com/whatnick/site-planner/internal/handler"
@@ -27,20 +28,35 @@ func main() {
 		log.Fatalf("Configuration error: %v", err)
 	}
 
-	// Initialize service clients
-	geocoder, err := geocode.NewClient(cfg.GoogleAPIKey)
-	if err != nil {
-		log.Fatalf("Failed to create geocoder: %v", err)
-	}
+	// Initialize service clients — use demo stubs when DEMO_MODE is set
+	var (
+		geo geocode.Geocoder
+		cad cadastre.Provider
+		img imagery.Imager
+		det detect.Detector
+	)
 
-	cadastreProvider := cadastre.NewSAProvider()
-	imager := imagery.NewClient(cfg.GoogleAPIKey)
-	detector := detect.NewClient(cfg.OpenAIAPIKey, cfg.SAMApiURL)
+	if cfg.DemoMode {
+		log.Println("DEMO MODE: using hardcoded stubs (no API keys required)")
+		geo = &demo.Geocoder{}
+		cad = &demo.Cadastre{}
+		img = &demo.Imager{}
+		det = &demo.Detector{}
+	} else {
+		gc, err := geocode.NewClient(cfg.GoogleAPIKey)
+		if err != nil {
+			log.Fatalf("Failed to create geocoder: %v", err)
+		}
+		geo = gc
+		cad = cadastre.NewSAProvider()
+		img = imagery.NewClient(cfg.GoogleAPIKey)
+		det = detect.NewClient(cfg.OpenAIAPIKey, cfg.SAMApiURL)
+	}
 
 	// Locate templates directory relative to the binary or working directory
 	templateDir := findTemplateDir()
 
-	h, err := handler.New(geocoder, cadastreProvider, imager, detector, templateDir)
+	h, err := handler.New(geo, cad, img, det, templateDir)
 	if err != nil {
 		log.Fatalf("Failed to create handler: %v", err)
 	}

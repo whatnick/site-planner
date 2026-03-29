@@ -10,6 +10,7 @@ type Config struct {
 	OpenAIAPIKey string
 	SAMApiURL    string // optional SAM segmentation endpoint
 	Port         string
+	DemoMode     bool
 }
 
 func Load() (*Config, error) {
@@ -30,10 +31,13 @@ func Load() (*Config, error) {
 		port = "8080"
 	}
 
+	demoMode := os.Getenv("DEMO_MODE") == "true" || os.Getenv("DEMO_MODE") == "1"
+
 	return &Config{
 		GoogleAPIKey: apiKey,
 		OpenAIAPIKey: openAIKey,
 		SAMApiURL:    samURL,
 		Port:         port,
+		DemoMode:     demoMode,
 	}, nil
 }

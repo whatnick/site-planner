@@ -23,10 +23,10 @@ import (
 )
 
 type Handler struct {
-	geocoder   *geocode.Client
+	geocoder   geocode.Geocoder
 	cadastrePr cadastre.Provider
-	imager     *imagery.Client
-	detector   *detect.Client
+	imager     imagery.Imager
+	detector   detect.Detector
 	templates  *template.Template
 	pdfDir     string
 	mu         sync.Mutex
@@ -38,7 +38,7 @@ type pdfRecord struct {
 	createdAt time.Time
 }
 
-func New(geocoder *geocode.Client, cadastrePr cadastre.Provider, imager *imagery.Client, detector *detect.Client, templateDir string) (*Handler, error) {
+func New(geocoder geocode.Geocoder, cadastrePr cadastre.Provider, imager imagery.Imager, detector detect.Detector, templateDir string) (*Handler, error) {
 	tmpl, err := template.ParseGlob(filepath.Join(templateDir, "*.html"))
 	if err != nil {
 		return nil, fmt.Errorf("parsing templates: %w", err)

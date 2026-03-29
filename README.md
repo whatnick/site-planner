@@ -43,6 +43,18 @@ go run ./cmd/server
 # → http://localhost:8080
 ```
 
+### Demo Mode
+
+Run without any API keys using hardcoded stubs for "12 King William St, Kent Town":
+
+```bash
+export DEMO_MODE=true
+go run ./cmd/server
+# → http://localhost:8080 (no API keys needed)
+```
+
+Demo mode provides a generated placeholder satellite image, realistic cadastral parcel boundary, and sample AI structure detections (house, shed, driveway, fence, garden bed) so you can test the full PDF generation pipeline offline.
+
 ## Requirements
 
 - Go 1.22+
@@ -60,6 +72,7 @@ go run ./cmd/server
 | `OPENAI_API_KEY` | No | — | OpenAI GPT-4o vision for structure detection |
 | `SAM_API_URL` | No | — | Segment Anything Model API endpoint |
 | `PORT` | No | `8080` | HTTP server port |
+| `DEMO_MODE` | No | `false` | Set to `true` or `1` for offline demo with hardcoded stubs |
 
 ## Architecture
 
@@ -71,6 +84,7 @@ internal/geocode/            → Google Geocoding API client
 internal/cadastre/           → SA ArcGIS REST cadastre provider + Provider interface
 internal/imagery/            → Google Static Maps satellite image + coordinate transforms
 internal/detect/             → AI structure detection (OpenAI GPT-4o + SAM)
+internal/demo/               → Demo mode stubs (hardcoded geocode, cadastre, imagery, detect)
 internal/planner/            → PDF composition (gofpdf): layout, overlays, annotations
 internal/handler/            → HTTP handlers (HTMX partials), PDF lifecycle management
 templates/                   → html/template files (index.html, result.html)

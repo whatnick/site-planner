@@ -18,6 +18,11 @@ const (
 	imageScale    = 2   // gives 1280x1280 actual pixels
 )
 
+// Imager is the interface for satellite image fetching.
+type Imager interface {
+	FetchSatelliteImage(ctx context.Context, bbox orb.Bound) ([]byte, int, float64, error)
+}
+
 type Client struct {
 	apiKey     string
 	httpClient *http.Client

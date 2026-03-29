@@ -19,6 +19,12 @@ type Detection struct {
 	Polygon    [][2]int `json:"polygon"`    // polygon points in image pixels (from SAM)
 }
 
+// Detector is the interface for AI-based structure detection.
+type Detector interface {
+	Available() bool
+	DetectStructures(ctx context.Context, imgPNG []byte, imgWidth, imgHeight int) ([]Detection, error)
+}
+
 // Client calls an LLM vision API to detect structures and optionally
 // a SAM segmentation endpoint for precise polygon outlines.
 type Client struct {

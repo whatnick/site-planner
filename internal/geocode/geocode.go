@@ -8,6 +8,11 @@ import (
 	"googlemaps.github.io/maps"
 )
 
+// Geocoder is the interface for address geocoding.
+type Geocoder interface {
+	Lookup(ctx context.Context, address string) (*models.Coord, string, error)
+}
+
 type Client struct {
 	mapsClient *maps.Client
 	apiKey     string
