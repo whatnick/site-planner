@@ -8,12 +8,14 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/whatnick/site-planner/internal/cadastre"
+	"github.com/whatnick/site-planner/internal/detect"
 	"github.com/whatnick/site-planner/internal/geocode"
 	"github.com/whatnick/site-planner/internal/imagery"
 	"github.com/whatnick/site-planner/internal/models"
@@ -24,6 +26,7 @@ type Handler struct {
 	geocoder   *geocode.Client
 	cadastrePr cadastre.Provider
 	imager     *imagery.Client
+	detector   *detect.Client
 	templates  *template.Template
 	pdfDir     string
 	mu         sync.Mutex
@@ -35,7 +38,7 @@ type pdfRecord struct {
 	createdAt time.Time
 }
 
-func New(geocoder *geocode.Client, cadastrePr cadastre.Provider, imager *imagery.Client, templateDir string) (*Handler, error) {
+func New(geocoder *geocode.Client, cadastrePr cadastre.Provider, imager *imagery.Client, detector *detect.Client, templateDir string) (*Handler, error) {
 	tmpl, err := template.ParseGlob(filepath.Join(templateDir, "*.html"))
 	if err != nil {
 		return nil, fmt.Errorf("parsing templates: %w", err)
@@ -50,6 +53,7 @@ func New(geocoder *geocode.Client, cadastrePr cadastre.Provider, imager *imagery
 		geocoder:   geocoder,
 		cadastrePr: cadastrePr,
 		imager:     imager,
+		detector:   detector,
 		templates:  tmpl,
 		pdfDir:     pdfDir,
 		pdfFiles:   make(map[string]pdfRecord),
@@ -71,7 +75,10 @@ func (h *Handler) handleHome(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	if err := h.templates.ExecuteTemplate(w, "index.html", nil); err != nil {
+	data := map[string]interface{}{
+		"DetectionAvailable": h.detector.Available(),
+	}
+	if err := h.templates.ExecuteTemplate(w, "index.html", data); err != nil {
 		log.Printf("ERROR rendering index: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}
@@ -112,26 +119,52 @@ func (h *Handler) handleGenerate(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Printf("Satellite image: zoom=%d, meters/pixel=%.3f", zoom, mpp)
 
-	// Step 4: Build site plan model
-	plan := &models.SitePlan{
-		Address:          address,
-		FormattedAddress: formattedAddr,
-		Parcel:           parcel,
-		SatelliteImage:   imgData,
-		MapCenterLat:     parcel.BoundingBox.Center()[1],
-		MapCenterLng:     parcel.BoundingBox.Center()[0],
-		ZoomLevel:        zoom,
-		MetersPerPixel:   mpp,
+	// Step 4: Optionally detect structures via AI
+	enableDetection := r.FormValue("detect") == "on"
+	var detections []models.Detection
+	if enableDetection && h.detector.Available() {
+		dets, err := h.detector.DetectStructures(ctx, imgData, 1280, 1280)
+		if err != nil {
+			log.Printf("WARNING: AI detection failed: %v", err)
+			// Non-fatal — continue without detections
+		} else {
+			for _, d := range dets {
+				detections = append(detections, models.Detection{
+					Label:      d.Label,
+					Confidence: d.Confidence,
+					BBoxPixels: d.BBoxPixels,
+					Polygon:    d.Polygon,
+				})
+			}
+			log.Printf("Detected %d structures via AI", len(detections))
+		}
 	}
 
-	// Step 5: Generate PDF
+	// Step 5: Parse proposed buildings from form
+	proposedBuildings := parseProposedBuildings(r)
+
+	// Step 6: Build site plan model
+	plan := &models.SitePlan{
+		Address:           address,
+		FormattedAddress:  formattedAddr,
+		Parcel:            parcel,
+		SatelliteImage:    imgData,
+		MapCenterLat:      parcel.BoundingBox.Center()[1],
+		MapCenterLng:      parcel.BoundingBox.Center()[0],
+		ZoomLevel:         zoom,
+		MetersPerPixel:    mpp,
+		Detections:        detections,
+		ProposedBuildings: proposedBuildings,
+	}
+
+	// Step 7: Generate PDF
 	pdfData, err := planner.GeneratePDF(plan)
 	if err != nil {
 		h.renderResult(w, nil, fmt.Errorf("PDF generation failed: %w", err))
 		return
 	}
 
-	// Step 6: Save PDF and return download link
+	// Step 8: Save PDF and return download link
 	id := uuid.New().String()
 	pdfPath := filepath.Join(h.pdfDir, id+".pdf")
 	if err := os.WriteFile(pdfPath, pdfData, 0600); err != nil {
@@ -146,11 +179,13 @@ func (h *Handler) handleGenerate(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Generated PDF: %s (%d bytes)", id, len(pdfData))
 
 	data := map[string]interface{}{
-		"Address":    formattedAddr,
-		"ParcelID":   parcel.PlanParcel,
-		"Area":       fmt.Sprintf("%.0f", parcel.Area),
-		"EdgeCount":  len(parcel.Edges),
-		"DownloadID": id,
+		"Address":           formattedAddr,
+		"ParcelID":          parcel.PlanParcel,
+		"Area":              fmt.Sprintf("%.0f", parcel.Area),
+		"EdgeCount":         len(parcel.Edges),
+		"DownloadID":        id,
+		"DetectionCount":    len(detections),
+		"ProposedCount":     len(proposedBuildings),
 	}
 	h.renderResult(w, data, nil)
 }
@@ -203,4 +238,63 @@ func (h *Handler) cleanupLoop() {
 		}
 		h.mu.Unlock()
 	}
+}
+
+// parseProposedBuildings extracts proposed building entries from form fields.
+// Expected form fields: bldg_label[], bldg_width[], bldg_height[], bldg_x[], bldg_y[]
+func parseProposedBuildings(r *http.Request) []models.ProposedBuilding {
+	labels := r.Form["bldg_label[]"]
+	widths := r.Form["bldg_width[]"]
+	heights := r.Form["bldg_height[]"]
+	xs := r.Form["bldg_x[]"]
+	ys := r.Form["bldg_y[]"]
+
+	n := len(labels)
+	if len(widths) < n {
+		n = len(widths)
+	}
+	if len(heights) < n {
+		n = len(heights)
+	}
+
+	var buildings []models.ProposedBuilding
+	for i := 0; i < n; i++ {
+		label := strings.TrimSpace(labels[i])
+		if label == "" {
+			continue
+		}
+
+		w, err := strconv.ParseFloat(strings.TrimSpace(widths[i]), 64)
+		if err != nil || w <= 0 || w > 200 {
+			continue
+		}
+		h, err := strconv.ParseFloat(strings.TrimSpace(heights[i]), 64)
+		if err != nil || h <= 0 || h > 200 {
+			continue
+		}
+
+		// Default position: center of image
+		posX := 0.5
+		posY := 0.5
+		if i < len(xs) {
+			if v, err := strconv.ParseFloat(strings.TrimSpace(xs[i]), 64); err == nil && v >= 0 && v <= 1 {
+				posX = v
+			}
+		}
+		if i < len(ys) {
+			if v, err := strconv.ParseFloat(strings.TrimSpace(ys[i]), 64); err == nil && v >= 0 && v <= 1 {
+				posY = v
+			}
+		}
+
+		buildings = append(buildings, models.ProposedBuilding{
+			Label:  label,
+			Width:  w,
+			Height: h,
+			X:      posX,
+			Y:      posY,
+		})
+	}
+
+	return buildings
 }

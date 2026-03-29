@@ -186,6 +186,137 @@
         }
 
         .download-btn:hover { background: #16a34a; }
+
+        /* AI Detection & Proposed Buildings */
+        .options-section {
+            margin-top: 1.5rem;
+            border-top: 1px solid #334155;
+            padding-top: 1.25rem;
+        }
+
+        .options-section h3 {
+            font-size: 0.95rem;
+            margin-bottom: 0.75rem;
+            color: #e2e8f0;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            accent-color: #3b82f6;
+        }
+
+        .checkbox-group label {
+            font-size: 0.875rem;
+            color: #cbd5e1;
+        }
+
+        .badge {
+            display: inline-block;
+            font-size: 0.65rem;
+            font-weight: 600;
+            padding: 0.1rem 0.4rem;
+            border-radius: 4px;
+            margin-left: 0.5rem;
+            vertical-align: middle;
+        }
+
+        .badge-ai {
+            background: #7c3aed;
+            color: white;
+        }
+
+        .proposed-section h3 {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .building-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .building-entry {
+            display: grid;
+            grid-template-columns: 1fr 80px 80px 70px 70px auto;
+            gap: 0.5rem;
+            align-items: end;
+            background: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            padding: 0.75rem;
+        }
+
+        .building-entry .field label {
+            display: block;
+            font-size: 0.7rem;
+            color: #94a3b8;
+            margin-bottom: 0.25rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .building-entry input {
+            width: 100%;
+            padding: 0.5rem;
+            font-size: 0.85rem;
+            background: #1e293b;
+            border: 1px solid #475569;
+            border-radius: 6px;
+            color: #f8fafc;
+            outline: none;
+        }
+
+        .building-entry input:focus {
+            border-color: #3b82f6;
+        }
+
+        .btn-remove {
+            background: #dc2626;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            width: 32px;
+            height: 32px;
+            cursor: pointer;
+            font-size: 1.1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+        }
+
+        .btn-remove:hover { background: #b91c1c; }
+
+        .btn-add {
+            margin-top: 0.5rem;
+            padding: 0.5rem 1rem;
+            font-size: 0.85rem;
+            font-weight: 600;
+            background: #334155;
+            color: #e2e8f0;
+            border: 1px dashed #64748b;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .btn-add:hover { background: #475569; }
+
+        .hint-small {
+            font-size: 0.7rem;
+            color: #64748b;
+            margin-top: 0.25rem;
+        }
     </style>
 </head>
 <body>
@@ -209,6 +340,24 @@
                                required autocomplete="street-address" autofocus>
                         <button type="submit">Generate</button>
                     </div>
+
+                    {{if .DetectionAvailable}}
+                    <div class="options-section">
+                        <h3>AI Structure Detection <span class="badge badge-ai">GPT-4o + SAM</span></h3>
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="detect" name="detect">
+                            <label for="detect">Detect existing structures (sheds, carports, driveways, pools, etc.)</label>
+                        </div>
+                    </div>
+                    {{end}}
+
+                    <div class="options-section proposed-section">
+                        <h3>Proposed Buildings</h3>
+                        <p class="hint-small">Add buildings you want to show on the site plan. Position is 0&ndash;1 fraction of image (0.5 = center).</p>
+                        <div id="building-list" class="building-list"></div>
+                        <button type="button" class="btn-add" onclick="addBuilding()">+ Add Proposed Building</button>
+                    </div>
+
                     <div class="spinner">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M12 2v4m0 12v4m-7.07-3.93l2.83-2.83m8.48-8.48l2.83-2.83M2 12h4m12 0h4m-3.93 7.07l-2.83-2.83M7.76 7.76L4.93 4.93"/>
@@ -226,11 +375,44 @@
         <p>
             Cadastral data &copy; Government of South Australia (Location SA) &bull;
             Imagery &copy; Google Maps &bull;
+            AI Detection: OpenAI GPT-4o + SAM &bull;
             Built with <a href="https://htmx.org">HTMX</a> + Go
         </p>
         <p style="margin-top: 0.25rem;">
             Site plans are indicative only and not a substitute for a licensed survey.
         </p>
     </footer>
+
+    <script>
+    function addBuilding() {
+        const list = document.getElementById('building-list');
+        const entry = document.createElement('div');
+        entry.className = 'building-entry';
+        entry.innerHTML = `
+            <div class="field">
+                <label>Label</label>
+                <input type="text" name="bldg_label[]" placeholder="New Dwelling" required>
+            </div>
+            <div class="field">
+                <label>Width (m)</label>
+                <input type="number" name="bldg_width[]" step="0.1" min="0.5" max="200" placeholder="10" required>
+            </div>
+            <div class="field">
+                <label>Depth (m)</label>
+                <input type="number" name="bldg_height[]" step="0.1" min="0.5" max="200" placeholder="12" required>
+            </div>
+            <div class="field">
+                <label>X pos</label>
+                <input type="number" name="bldg_x[]" step="0.01" min="0" max="1" value="0.5" placeholder="0.5">
+            </div>
+            <div class="field">
+                <label>Y pos</label>
+                <input type="number" name="bldg_y[]" step="0.01" min="0" max="1" value="0.5" placeholder="0.5">
+            </div>
+            <button type="button" class="btn-remove" onclick="this.closest('.building-entry').remove()" title="Remove">&times;</button>
+        `;
+        list.appendChild(entry);
+    }
+    </script>
 </body>
 </html>

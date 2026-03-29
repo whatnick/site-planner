@@ -54,6 +54,12 @@ func GeneratePDF(plan *models.SitePlan) ([]byte, error) {
 	// Draw dimension annotations
 	drawDimensions(pdf, plan, mapX, mapY, mapW, mapH)
 
+	// Draw AI-detected structures
+	drawDetections(pdf, plan, mapX, mapY, mapW, mapH)
+
+	// Draw proposed buildings
+	drawProposedBuildings(pdf, plan, mapX, mapY, mapW, mapH)
+
 	// North arrow
 	drawNorthArrow(pdf, mapX+mapW-20, mapY+10)
 
@@ -352,5 +358,311 @@ func drawFooter(pdf *gofpdf.Fpdf, plan *models.SitePlan) {
 	pdf.SetXY(pageWidth-marginRight-120, pageHeight-14)
 	pdf.CellFormat(120, 4, "Cadastre: Location SA (Government of South Australia)", "", 1, "R", false, 0, "")
 	pdf.SetXY(pageWidth-marginRight-120, pageHeight-10)
-	pdf.CellFormat(120, 4, "Imagery: Google Maps Static API", "", 0, "R", false, 0, "")
+	attrText := "Imagery: Google Maps Static API"
+	if len(plan.Detections) > 0 {
+		attrText += " | Detection: OpenAI GPT-4o"
+	}
+	pdf.CellFormat(120, 4, attrText, "", 0, "R", false, 0, "")
+}
+
+// detectionColor returns an RGB color for a given detection label.
+func detectionColor(label string) (int, int, int) {
+	switch label {
+	case "house":
+		return 0, 120, 255 // blue
+	case "shed", "outbuilding":
+		return 255, 165, 0 // orange
+	case "garage":
+		return 0, 200, 200 // cyan
+	case "carport":
+		return 180, 0, 255 // purple
+	case "driveway", "paved_area":
+		return 128, 128, 128 // gray
+	case "pool":
+		return 0, 191, 255 // deep sky blue
+	case "deck", "pergola":
+		return 139, 90, 43 // brown
+	case "fence", "retaining_wall":
+		return 255, 255, 0 // yellow
+	case "garden_bed":
+		return 0, 180, 0 // green
+	default:
+		return 255, 105, 180 // pink
+	}
+}
+
+// drawDetections renders AI-detected structures on the map.
+func drawDetections(pdf *gofpdf.Fpdf, plan *models.SitePlan, mapX, mapY, mapW, mapH float64) {
+	if len(plan.Detections) == 0 {
+		return
+	}
+
+	// Determine image drawing area (same logic as drawSatelliteImage)
+	size := mapW
+	imgX := mapX
+	imgY := mapY
+	if mapH < mapW {
+		size = mapH
+		imgX = mapX + (mapW-mapH)/2
+	} else {
+		imgY = mapY + (mapW-mapH)/2
+	}
+
+	mmPerPixel := size / float64(imgPixelSize)
+
+	for _, det := range plan.Detections {
+		r, g, b := detectionColor(det.Label)
+
+		if len(det.Polygon) >= 3 {
+			// Draw precise polygon from SAM
+			points := make([]gofpdf.PointType, len(det.Polygon))
+			for i, pt := range det.Polygon {
+				points[i] = gofpdf.PointType{
+					X: imgX + float64(pt[0])*mmPerPixel,
+					Y: imgY + float64(pt[1])*mmPerPixel,
+				}
+			}
+
+			pdf.SetAlpha(0.15, "Normal")
+			pdf.SetFillColor(r, g, b)
+			pdf.Polygon(points, "F")
+			pdf.SetAlpha(1.0, "Normal")
+
+			pdf.SetDrawColor(r, g, b)
+			pdf.SetLineWidth(0.4)
+			pdf.Polygon(points, "D")
+		} else {
+			// Draw bounding box
+			bx := imgX + float64(det.BBoxPixels[0])*mmPerPixel
+			by := imgY + float64(det.BBoxPixels[1])*mmPerPixel
+			bw := float64(det.BBoxPixels[2]) * mmPerPixel
+			bh := float64(det.BBoxPixels[3]) * mmPerPixel
+
+			pdf.SetAlpha(0.15, "Normal")
+			pdf.SetFillColor(r, g, b)
+			pdf.Rect(bx, by, bw, bh, "F")
+			pdf.SetAlpha(1.0, "Normal")
+
+			pdf.SetDrawColor(r, g, b)
+			pdf.SetLineWidth(0.4)
+			pdf.Rect(bx, by, bw, bh, "D")
+		}
+
+		// Label
+		labelX := imgX + float64(det.BBoxPixels[0])*mmPerPixel
+		labelY := imgY + float64(det.BBoxPixels[1])*mmPerPixel - 1
+
+		label := fmt.Sprintf("%s (%.0f%%)", det.Label, det.Confidence*100)
+		pdf.SetFont("Helvetica", "B", 6)
+		tw := pdf.GetStringWidth(label) + 2
+
+		pdf.SetFillColor(r, g, b)
+		pdf.SetAlpha(0.85, "Normal")
+		pdf.Rect(labelX, labelY-4, tw, 4.5, "F")
+		pdf.SetAlpha(1.0, "Normal")
+
+		pdf.SetTextColor(255, 255, 255)
+		pdf.SetXY(labelX+1, labelY-3.5)
+		pdf.CellFormat(tw-2, 4, label, "", 0, "L", false, 0, "")
+	}
+
+	// Draw detection legend in top-left of map area
+	drawDetectionLegend(pdf, plan.Detections, mapX+5, mapY+5)
+}
+
+// drawDetectionLegend renders a compact legend of detected structure types.
+func drawDetectionLegend(pdf *gofpdf.Fpdf, detections []models.Detection, x, y float64) {
+	// Collect unique labels
+	seen := map[string]bool{}
+	var labels []string
+	for _, d := range detections {
+		if !seen[d.Label] {
+			seen[d.Label] = true
+			labels = append(labels, d.Label)
+		}
+	}
+
+	if len(labels) == 0 {
+		return
+	}
+
+	lineH := 4.5
+	legendH := float64(len(labels))*lineH + 8
+	legendW := 45.0
+
+	// Background
+	pdf.SetFillColor(0, 0, 0)
+	pdf.SetAlpha(0.75, "Normal")
+	pdf.Rect(x, y, legendW, legendH, "F")
+	pdf.SetAlpha(1.0, "Normal")
+
+	// Title
+	pdf.SetFont("Helvetica", "B", 6)
+	pdf.SetTextColor(255, 255, 255)
+	pdf.SetXY(x+2, y+1)
+	pdf.CellFormat(legendW-4, 4, "AI DETECTIONS", "", 0, "L", false, 0, "")
+
+	// Entries
+	pdf.SetFont("Helvetica", "", 5.5)
+	for i, label := range labels {
+		ly := y + 6 + float64(i)*lineH
+		r, g, b := detectionColor(label)
+
+		// Color swatch
+		pdf.SetFillColor(r, g, b)
+		pdf.Rect(x+2, ly, 3, 3, "F")
+
+		// Label text
+		pdf.SetTextColor(255, 255, 255)
+		pdf.SetXY(x+6.5, ly-0.5)
+		pdf.CellFormat(legendW-9, 3.5, label, "", 0, "L", false, 0, "")
+	}
+}
+
+// drawProposedBuildings renders user-specified proposed buildings on the map.
+func drawProposedBuildings(pdf *gofpdf.Fpdf, plan *models.SitePlan, mapX, mapY, mapW, mapH float64) {
+	if len(plan.ProposedBuildings) == 0 {
+		return
+	}
+
+	if plan.MetersPerPixel == 0 {
+		return
+	}
+
+	// Determine image drawing area
+	size := mapW
+	imgX := mapX
+	imgY := mapY
+	if mapH < mapW {
+		size = mapH
+		imgX = mapX + (mapW-mapH)/2
+	} else {
+		imgY = mapY + (mapW-mapH)/2
+	}
+
+	mmPerPixel := size / float64(imgPixelSize)
+	// 1 meter = (1/MetersPerPixel) pixels, and each pixel = mmPerPixel mm
+	pixelsPerMeter := 1.0 / plan.MetersPerPixel
+	metersToMM := pixelsPerMeter * mmPerPixel
+
+	for _, bldg := range plan.ProposedBuildings {
+		// Position: fraction of image size → mm offset
+		cx := imgX + bldg.X*size
+		cy := imgY + bldg.Y*size
+
+		bw := bldg.Width * metersToMM
+		bh := bldg.Height * metersToMM
+
+		bx := cx - bw/2
+		by := cy - bh/2
+
+		// Dashed outline with hatching
+		pdf.SetDrawColor(0, 100, 255)
+		pdf.SetLineWidth(0.5)
+
+		// Draw dashed rectangle (simulate with segments)
+		dashLen := 2.0
+		drawDashedRect(pdf, bx, by, bw, bh, dashLen)
+
+		// Light blue fill
+		pdf.SetAlpha(0.2, "Normal")
+		pdf.SetFillColor(0, 100, 255)
+		pdf.Rect(bx, by, bw, bh, "F")
+		pdf.SetAlpha(1.0, "Normal")
+
+		// Cross-hatch pattern (diagonal lines)
+		pdf.SetDrawColor(0, 100, 255)
+		pdf.SetAlpha(0.4, "Normal")
+		pdf.SetLineWidth(0.15)
+		step := 3.0
+		for d := step; d < bw+bh; d += step {
+			x1 := bx + d
+			y1 := by
+			x2 := bx
+			y2 := by + d
+
+			// Clip to rectangle
+			if x1 > bx+bw {
+				y1 = by + (x1 - (bx + bw))
+				x1 = bx + bw
+			}
+			if y2 > by+bh {
+				x2 = bx + (y2 - (by + bh))
+				y2 = by + bh
+			}
+
+			if x1 >= bx && x1 <= bx+bw && y1 >= by && y1 <= by+bh &&
+				x2 >= bx && x2 <= bx+bw && y2 >= by && y2 <= by+bh {
+				pdf.Line(x1, y1, x2, y2)
+			}
+		}
+		pdf.SetAlpha(1.0, "Normal")
+
+		// Label
+		label := bldg.Label
+		dims := fmt.Sprintf("%.1f x %.1f m", bldg.Width, bldg.Height)
+
+		pdf.SetFont("Helvetica", "B", 7)
+		tw := pdf.GetStringWidth(label) + 2
+		dw := pdf.GetStringWidth(dims) + 2
+		maxW := tw
+		if dw > maxW {
+			maxW = dw
+		}
+
+		lx := cx - maxW/2
+		ly := cy - 5
+
+		pdf.SetFillColor(0, 100, 255)
+		pdf.SetAlpha(0.85, "Normal")
+		pdf.Rect(lx, ly, maxW, 9, "F")
+		pdf.SetAlpha(1.0, "Normal")
+
+		pdf.SetTextColor(255, 255, 255)
+		pdf.SetXY(lx+1, ly+0.5)
+		pdf.CellFormat(maxW-2, 4, label, "", 0, "C", false, 0, "")
+
+		pdf.SetFont("Helvetica", "", 6)
+		pdf.SetXY(lx+1, ly+4.5)
+		pdf.CellFormat(maxW-2, 4, dims, "", 0, "C", false, 0, "")
+	}
+}
+
+// drawDashedRect draws a dashed rectangle.
+func drawDashedRect(pdf *gofpdf.Fpdf, x, y, w, h, dashLen float64) {
+	drawDashedLine(pdf, x, y, x+w, y, dashLen)
+	drawDashedLine(pdf, x+w, y, x+w, y+h, dashLen)
+	drawDashedLine(pdf, x+w, y+h, x, y+h, dashLen)
+	drawDashedLine(pdf, x, y+h, x, y, dashLen)
+}
+
+// drawDashedLine draws a dashed line between two points.
+func drawDashedLine(pdf *gofpdf.Fpdf, x1, y1, x2, y2, dashLen float64) {
+	dx := x2 - x1
+	dy := y2 - y1
+	length := math.Sqrt(dx*dx + dy*dy)
+	if length == 0 {
+		return
+	}
+
+	ux := dx / length
+	uy := dy / length
+	drawn := 0.0
+	on := true
+
+	for drawn < length {
+		segLen := dashLen
+		if drawn+segLen > length {
+			segLen = length - drawn
+		}
+		if on {
+			sx := x1 + ux*drawn
+			sy := y1 + uy*drawn
+			ex := x1 + ux*(drawn+segLen)
+			ey := y1 + uy*(drawn+segLen)
+			pdf.Line(sx, sy, ex, ey)
+		}
+		drawn += segLen
+		on = !on
+	}
 }

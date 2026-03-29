@@ -13,6 +13,7 @@ import (
 
 	"github.com/whatnick/site-planner/internal/cadastre"
 	"github.com/whatnick/site-planner/internal/config"
+	"github.com/whatnick/site-planner/internal/detect"
 	"github.com/whatnick/site-planner/internal/geocode"
 	"github.com/whatnick/site-planner/internal/handler"
 	"github.com/whatnick/site-planner/internal/imagery"
@@ -34,11 +35,12 @@ func main() {
 
 	cadastreProvider := cadastre.NewSAProvider()
 	imager := imagery.NewClient(cfg.GoogleAPIKey)
+	detector := detect.NewClient(cfg.OpenAIAPIKey, cfg.SAMApiURL)
 
 	// Locate templates directory relative to the binary or working directory
 	templateDir := findTemplateDir()
 
-	h, err := handler.New(geocoder, cadastreProvider, imager, templateDir)
+	h, err := handler.New(geocoder, cadastreProvider, imager, detector, templateDir)
 	if err != nil {
 		log.Fatalf("Failed to create handler: %v", err)
 	}

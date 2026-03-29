@@ -14,6 +14,14 @@
         <dd>{{.Area}} m&sup2;</dd>
         <dt>Boundary Edges</dt>
         <dd>{{.EdgeCount}}</dd>
+        {{if .DetectionCount}}
+        <dt>AI Detections</dt>
+        <dd>{{.DetectionCount}} structure(s) identified</dd>
+        {{end}}
+        {{if .ProposedCount}}
+        <dt>Proposed Buildings</dt>
+        <dd>{{.ProposedCount}} building(s) added</dd>
+        {{end}}
     </dl>
     <a class="download-btn" href="/download/{{.DownloadID}}">
         &#x1F4E5; Download Site Plan (PDF)
