@@ -179,13 +179,13 @@ func (h *Handler) handleGenerate(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Generated PDF: %s (%d bytes)", id, len(pdfData))
 
 	data := map[string]interface{}{
-		"Address":           formattedAddr,
-		"ParcelID":          parcel.PlanParcel,
-		"Area":              fmt.Sprintf("%.0f", parcel.Area),
-		"EdgeCount":         len(parcel.Edges),
-		"DownloadID":        id,
-		"DetectionCount":    len(detections),
-		"ProposedCount":     len(proposedBuildings),
+		"Address":        formattedAddr,
+		"ParcelID":       parcel.PlanParcel,
+		"Area":           fmt.Sprintf("%.0f", parcel.Area),
+		"EdgeCount":      len(parcel.Edges),
+		"DownloadID":     id,
+		"DetectionCount": len(detections),
+		"ProposedCount":  len(proposedBuildings),
 	}
 	h.renderResult(w, data, nil)
 }

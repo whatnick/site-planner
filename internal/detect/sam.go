@@ -12,11 +12,11 @@ import (
 
 // samRequest is the payload sent to a SAM API endpoint.
 type samRequest struct {
-	Image      string   `json:"image"`       // base64 PNG
-	Width      int      `json:"width"`       // image width
-	Height     int      `json:"height"`      // image height
-	Boxes      [][4]int `json:"boxes"`       // bounding boxes [x, y, w, h]
-	Labels     []string `json:"labels"`      // corresponding labels
+	Image  string   `json:"image"`  // base64 PNG
+	Width  int      `json:"width"`  // image width
+	Height int      `json:"height"` // image height
+	Boxes  [][4]int `json:"boxes"`  // bounding boxes [x, y, w, h]
+	Labels []string `json:"labels"` // corresponding labels
 }
 
 // samResponse is the response from a SAM API endpoint.

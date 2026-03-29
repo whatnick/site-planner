@@ -13,10 +13,10 @@ import (
 
 // Detection represents a structure identified in a satellite image.
 type Detection struct {
-	Label      string    `json:"label"`      // e.g. "shed", "driveway", "carport", "pool"
-	Confidence float64   `json:"confidence"` // 0.0–1.0
-	BBoxPixels [4]int    `json:"bbox"`       // [x, y, width, height] in image pixels
-	Polygon    [][2]int  `json:"polygon"`    // polygon points in image pixels (from SAM)
+	Label      string   `json:"label"`      // e.g. "shed", "driveway", "carport", "pool"
+	Confidence float64  `json:"confidence"` // 0.0–1.0
+	BBoxPixels [4]int   `json:"bbox"`       // [x, y, width, height] in image pixels
+	Polygon    [][2]int `json:"polygon"`    // polygon points in image pixels (from SAM)
 }
 
 // Client calls an LLM vision API to detect structures and optionally
@@ -102,7 +102,7 @@ If no structures are visible, return an empty array: []`, imgWidth, imgHeight)
 				},
 			},
 		},
-		"max_tokens": 2048,
+		"max_tokens":  2048,
 		"temperature": 0.1,
 	}
 
